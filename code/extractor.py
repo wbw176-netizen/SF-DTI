@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-批量池化策略特征提取器
-一次性使用不同池化策略提取特征，便于比较和选择最佳策略
-"""
-
 import pandas as pd
 import numpy as np
 import torch
@@ -20,12 +15,10 @@ import itertools
 from concurrent.futures import ThreadPoolExecutor
 import time
 
-# 设置日志
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class MultiPoolingFeatureExtractor:
-    """多池化策略特征提取器"""
     
     def __init__(self, 
                  protein_model_name: str = "facebook/esm2_t33_650M_UR50D",
@@ -35,7 +28,6 @@ class MultiPoolingFeatureExtractor:
         self.smiles_model_name = smiles_model_name
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         
-        # 支持的池化策略
         self.pooling_strategies = {
             "cls": "仅使用[CLS]标记",
             "mean": "平均池化",
@@ -406,4 +398,5 @@ def main():
         logger.info(f"  样本数量: {features['smiles_features'].shape[0]}")
 
 if __name__ == "__main__":
+
     main()
