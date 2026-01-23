@@ -18,7 +18,6 @@ class DTIDataset(data.Dataset):
         self.bond_featurizer = CanonicalBondFeaturizer(self_loop=True)
         self.fc = partial(smiles_to_bigraph, add_self_loop=True)
         
-        # 检查预训练特征是否存在
         self.has_precomputed_features = False
         if precomputed_features_dir and os.path.exists(precomputed_features_dir):
             self.has_precomputed_features = True
@@ -27,7 +26,6 @@ class DTIDataset(data.Dataset):
     def _load_precomputed_features(self):
         """加载预训练特征"""
         try:
-            # 尝试不同的文件名模式
             possible_smiles_files = [
                 'smiles_features.npy',
                 'train_smiles_features.npy',
@@ -35,7 +33,6 @@ class DTIDataset(data.Dataset):
                 'test_smiles_features.npy'
             ]
             
-            # 分别查找ESM2和ProtT5特征文件
             possible_esm2_files = [
                 'protein_features_esm2.npy',
                 'train_protein_features_esm2.npy',
@@ -50,7 +47,6 @@ class DTIDataset(data.Dataset):
                 'test_protein_features_prott5.npy'
             ]
             
-            # 查找存在的文件
             smiles_features_path = None
             esm2_features_path = None
             prott5_features_path = None
@@ -77,17 +73,12 @@ class DTIDataset(data.Dataset):
                 self.smiles_features = np.load(smiles_features_path)
                 self.esm2_features = np.load(esm2_features_path)
                 self.prott5_features = np.load(prott5_features_path)
-                print(f"成功加载预训练特征:")
                 print(f"  SMILES: {os.path.basename(smiles_features_path)} {self.smiles_features.shape}")
                 print(f"  ESM2: {os.path.basename(esm2_features_path)} {self.esm2_features.shape}")
                 print(f"  ProtT5: {os.path.basename(prott5_features_path)} {self.prott5_features.shape}")
             else:
-                print("预训练特征文件不存在，将使用原始特征")
-                print(f"查找目录: {self.precomputed_features_dir}")
-                print(f"尝试的文件名: {possible_smiles_files + possible_esm2_files + possible_prott5_files}")
                 self.has_precomputed_features = False
         except Exception as e:
-            print(f"加载预训练特征失败: {e}")
             self.has_precomputed_features = False
 
     def __len__(self):
@@ -120,14 +111,11 @@ class DTIDataset(data.Dataset):
         v_p = self.df.iloc[index]['Protein']
         v_p = integer_label_protein(v_p)
         y = self.df.iloc[index]['Y']
-
-        # 预训练特征
         drug_precomputed = None
         protein_precomputed = None
         
         if self.has_precomputed_features:
             drug_precomputed = torch.tensor(self.smiles_features[index], dtype=torch.float32)
-            # 返回ESM2和ProtT5特征的元组
             esm2_feat = torch.tensor(self.esm2_features[index], dtype=torch.float32)
             prott5_feat = torch.tensor(self.prott5_features[index], dtype=torch.float32)
             protein_precomputed = (esm2_feat, prott5_feat)
