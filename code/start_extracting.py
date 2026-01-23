@@ -1,23 +1,18 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-特征提取脚本（变长存储 + float16版本）
-使用本地预训练模型目录提取变长序列特征
-"""
-
 import os
 import sys
 import logging
 import argparse
 import numpy as np
 
-# 确保可以导入项目根目录下的 two_stage_feature_extraction.py
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, os.pardir))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from two_stage_feature_extraction import TwoStageFeaturePipeline
+from extractor import TwoStageFeaturePipeline
 
 
 logging.basicConfig(level=logging.INFO)
@@ -36,7 +31,6 @@ def extract_features(data_dir: str,
     logger.info(f"开始特征提取: 变长序列特征 + float16")
     logger.info(f"{'=' * 60}")
 
-    # 初始化管道（本地模型目录）
     pipeline = TwoStageFeaturePipeline(
         esm2_dir=esm2_dir,
         chemberta_dir=chemberta_dir,
