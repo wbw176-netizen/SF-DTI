@@ -46,24 +46,17 @@ def main():
     df_val = pd.read_csv(val_path)
     df_test = pd.read_csv(test_path)
 
-    # 设置预训练特征路径
     train_precomputed_dir = None
     val_precomputed_dir = None
     test_precomputed_dir = None
 
     if args.use_precomputed:
-        # 如果没有指定预训练特征目录，使用默认路径
         if args.precomputed_dir is None:
             args.precomputed_dir = os.path.join('..', 'datasets', args.data, args.split)
 
         train_precomputed_dir = os.path.join(args.precomputed_dir, 'train')
         val_precomputed_dir = os.path.join(args.precomputed_dir, 'val')
         test_precomputed_dir = os.path.join(args.precomputed_dir, 'test')
-        print(f"使用预训练特征:")
-        print(f"  特征根目录: {args.precomputed_dir}")
-        print(f"  训练集特征目录: {train_precomputed_dir}")
-        print(f"  验证集特征目录: {val_precomputed_dir}")
-        print(f"  测试集特征目录: {test_precomputed_dir}")
 
     train_dataset = DTIDataset(df_train.index.values, df_train, precomputed_features_dir=train_precomputed_dir)
     print(f'train_dataset:{len(train_dataset)}')
@@ -83,7 +76,6 @@ def main():
     opt = torch.optim.Adam(model.parameters(), lr=cfg.SOLVER.LR, weight_decay=cfg.SOLVER.WEIGHT_DECAY)
     torch.backends.cudnn.benchmark = True
 
-    # 使用自动混合精度训练
     if args.amp:
         print("Activate AMP (Automatic Mixed Precision) training")
 
