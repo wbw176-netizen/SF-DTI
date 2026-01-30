@@ -43,6 +43,30 @@ python start_extracting.py batch \
   --chemberta_dir ./plm_models/chemberta_model \
   --prott5_dir ./plm_models/protT5_model
 ```
+## 🎨 Visualization
+
+To intuitively display the distribution of the learned features, we employed the **Uniform Manifold Approximation and Projection (UMAP) [4]** algorithm for dimensionality reduction. The visualization results demonstrate that our model can effectively distinguish between different drug-target interaction types.
+
+👉 **Click the link below to view all visualization results:**
+
+[**📂 Open Visualization Folder**](./visualization)
+
+---
+
+## 🧪 Case Studies and Verification
+
+To assess the practical capability of our model, we conducted case studies to identify potential interactions for specific drugs/targets. The raw prediction scores for these case studies are provided in the [`case_study_scores/`](./case_study_scores) directory.
+
+**Verification Process:**
+The top-ranked predicted interactions were validated by cross-referencing them with the **DrugBank [5]** database. We searched for evidence of these interactions in the database to confirm the biological relevance of our predictions.
+
+- **Validation Source:** [DrugBank Online](https://go.drugbank.com/)
+- **Data Files:**
+  - `adra1c_case_study.csv`
+  - `h1r_case_study.csv`
+  - `glucose_case_study.csv`
+  - *(See folder for full list)*
+
 ### 3. References
 
 If you use these pre-trained models or our feature extraction pipeline, please cite the original papers:
@@ -50,3 +74,6 @@ If you use these pre-trained models or our feature extraction pipeline, please c
 1. **ChemBERTa**: Chithrananda, S., Grand, G., & Ramsundar, B. (2020). *ChemBERTa: Large-Scale Self-Supervised Pretraining for Molecular Property Prediction*. arXiv preprint arXiv:2010.09885.
 2. **ESM-2**: Lin, Z., Akin, H., Rao, R., et al. (2023). *Evolutionary-scale prediction of atomic-level protein structure with a language model*. Science, 379(6637), 1123-1130.
 3. **ProtT5**: Elnaggar, A., Heinzinger, M., Dallago, C., et al. (2021). *ProtTrans: Toward Understanding the Language of Life Through Self-Supervised Learning*. IEEE Transactions on Pattern Analysis and Machine Intelligence, 44(10), 7112-7127.
+4. McInnes, L., Healy, J., & Melville, J. (2018). **UMAP**: Uniform Manifold Approximation and Projection for Dimension Reduction. arXiv preprint arXiv:1802.03426.
+5. **DrugBank**: Wishart DS, et al. DrugBank 5.0: a major update to the DrugBank database for 2018. Nucleic Acids Res. 2018 Jan 4;46(D1):D1074-D1082.
+5.DrugBank: Wishart DS, et al. DrugBank 5.0: a major update to the DrugBank database for 2018. Nucleic Acids Res. 2018 Jan 4;46(D1):D1074-D1082.
