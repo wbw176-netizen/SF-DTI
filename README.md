@@ -25,7 +25,7 @@ Ensure your model directories are organized. For example:
 ├── chemberta_model/  # Model files from DeepChem
 ├── esm2_3B_model/    # Model files from Facebook
 └── protT5_model/     # Model files from Rostlab
-##▶️ Option A: Extract for a Single Dataset
+▶️ Option A: Extract for a Single Dataset
 To extract features for a specific dataset (must contain train.csv, val.csv, test.csv):
 python start_extracting.py single \
   --data_dir ./datasets/Drugbank/random2 \
@@ -34,7 +34,7 @@ python start_extracting.py single \
   --chemberta_dir ./plm_models/chemberta_model \
   --prott5_dir ./plm_models/protT5_model \
   --batch_size 4
-##🔁 Option B: Batch Extraction
+🔁 Option B: Batch Extraction
 To batch process multiple datasets (iterating through random2 subfolders):
 python start_extracting.py batch \
   --data_dir ./datasets \
