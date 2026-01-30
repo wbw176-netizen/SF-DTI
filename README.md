@@ -42,7 +42,7 @@ python start_extracting.py batch \
   --esm2_dir ./plm_models/esm2_3B_model \
   --chemberta_dir ./plm_models/chemberta_model \
   --prott5_dir ./plm_models/protT5_model
-###3. References
+#####3. References
 If you use these pre-trained models or our feature extraction pipeline, please cite the original papers:
 
 1. ChemBERTa: Chithrananda, S., Grand, G., & Ramsundar, B. (2020). ChemBERTa: Large-Scale Self-Supervised Pretraining for Molecular Property Prediction. arXiv preprint arXiv:2010.09885.
