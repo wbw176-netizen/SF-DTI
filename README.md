@@ -42,11 +42,11 @@ python start_extracting.py batch \
   --esm2_dir ./plm_models/esm2_3B_model \
   --chemberta_dir ./plm_models/chemberta_model \
   --prott5_dir ./plm_models/protT5_model
-#####3. References
+```
+### 3. References
+
 If you use these pre-trained models or our feature extraction pipeline, please cite the original papers:
 
-1. ChemBERTa: Chithrananda, S., Grand, G., & Ramsundar, B. (2020). ChemBERTa: Large-Scale Self-Supervised Pretraining for Molecular Property Prediction. arXiv preprint arXiv:2010.09885.
-
-2. ESM-2: Lin, Z., Akin, H., Rao, R., et al. (2023). Evolutionary-scale prediction of atomic-level protein structure with a language model. Science, 379(6637), 1123-1130.
-
-3. ProtT5: Elnaggar, A., Heinzinger, M., Dallago, C., et al. (2021). ProtTrans: Toward Understanding the Language of Life Through Self-Supervised Learning. IEEE Transactions on Pattern Analysis and Machine Intelligence, 44(10), 7112-7127.
+1. **ChemBERTa**: Chithrananda, S., Grand, G., & Ramsundar, B. (2020). *ChemBERTa: Large-Scale Self-Supervised Pretraining for Molecular Property Prediction*. arXiv preprint arXiv:2010.09885.
+2. **ESM-2**: Lin, Z., Akin, H., Rao, R., et al. (2023). *Evolutionary-scale prediction of atomic-level protein structure with a language model*. Science, 379(6637), 1123-1130.
+3. **ProtT5**: Elnaggar, A., Heinzinger, M., Dallago, C., et al. (2021). *ProtTrans: Toward Understanding the Language of Life Through Self-Supervised Learning*. IEEE Transactions on Pattern Analysis and Machine Intelligence, 44(10), 7112-7127.
