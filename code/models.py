@@ -2,8 +2,6 @@ class SF_DTI(nn.Module):
     def __init__(self, device='cuda', use_precomputed_features=True, **config):
         super(SF_DTI, self).__init__()
         self.device = device
-        self.use_precomputed_features = use_precomputed_features
-        
         drug_in_feats = config["DRUG"]["NODE_IN_FEATS"]
         drug_embedding = config["DRUG"]["NODE_IN_EMBEDDING"]
         drug_hidden_feats = config["DRUG"]["HIDDEN_LAYERS"]
