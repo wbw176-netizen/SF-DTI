@@ -1,4 +1,4 @@
-name: MAGC_DTI
+name: SF_DTI
 channels:
   - conda-forge
   - dglteam/label/cu121
