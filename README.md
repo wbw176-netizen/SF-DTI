@@ -1,5 +1,14 @@
 # SF-DTI
 
+## 🎨Datasets Distribution Analysis
+
+We conduct a distribution analysis on six benchmark DTI datasets, including BindingDB, Biosnap, Celegans, Drugbank, Human, and KIBA, to better understand their data characteristics before model training.
+
+The analysis includes basic dataset statistics, SMILES/protein length distributions, drug chemical-space visualization based on Morgan fingerprints + UMAP, and protein sequence-space visualization based on 3-mer TF-IDF + SVD + UMAP. These results provide an intuitive view of dataset diversity and potential distribution shift across different benchmarks, which is useful for interpreting model performance under random-split, cold-start, and cross-domain settings.
+
+👉 **Click the link below to view all Analysis results:**
+
+[**📂 Open Distributions Folder**](./Distributions)
 
 ## 🧬 Feature Extraction with Pre-trained Language Models (PLMs)
 
