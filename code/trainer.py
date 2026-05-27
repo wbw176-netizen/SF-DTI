@@ -6,7 +6,6 @@ from sklearn.metrics import roc_auc_score, average_precision_score, roc_curve, c
 from models import binary_cross_entropy, cross_entropy_logits
 from prettytable import PrettyTable
 from tqdm import tqdm
-import copy
 from torch.cuda.amp import GradScaler, autocast
 from utils import EarlyStopping
 def save_model(model):
@@ -44,11 +43,6 @@ class Trainer(object):
         self.gradient_clip_norm = config.get("SOLVER", {}).get("GRADIENT_CLIP_NORM", 1.0)
         self.use_precomputed = config.get("use_precomputed_features", False)
 
-        # OT损失相关参数
-        self.use_ot_loss = config.get("SOLVER", {}).get("USE_OT_LOSS", True)
-        self.ot_loss_weight = config.get("SOLVER", {}).get("OT_LOSS_WEIGHT", 0.1)
-
-        self.best_model = None
         self.best_epoch = None
         self.best_auroc = 0
         self.best_auprc = 0
@@ -110,16 +104,16 @@ class Trainer(object):
                 break
                 
             if auroc >= self.best_auroc:
-                self.best_model = copy.deepcopy(self.model)
                 self.best_auroc = auroc
-                self.best_epoch = self.current_epoch
+                self.best_auprc = auprc
 
             print('Validation at Epoch ' + str(self.current_epoch) + ' with validation loss ' + str(val_loss), " AUROC "
                   + str(auroc) + " AUPRC " + str(auprc))
         # 加载最佳模型进行测试
-        checkpoint = torch.load(self.model_save_path)
+        checkpoint = torch.load(self.model_save_path, map_location=self.device)
         self.model.load_state_dict(checkpoint['model_state_dict'])
         self.best_epoch = checkpoint['epoch']
+        self.best_auroc = checkpoint.get('val_score', self.best_auroc)
         
         auroc, auprc, f1, sensitivity, specificity, accuracy, test_loss, thred_optim, precision, mcc = self.test(dataloader="test")
         test_lst = ["epoch " + str(self.best_epoch)] + list(map(float2str, [auroc, auprc, f1, sensitivity, specificity,
@@ -145,7 +139,7 @@ class Trainer(object):
 
     def save_result(self):
         if self.config["RESULT"]["SAVE_MODEL"]:
-            torch.save(self.best_model.state_dict(),
+            torch.save(self.model.state_dict(),
                        os.path.join(self.output_dir, f"best_model_epoch_{self.best_epoch}.pth"))
             torch.save(self.model.state_dict(), os.path.join(self.output_dir, f"model_epoch_{self.current_epoch}.pth"))
         state = {
@@ -190,18 +184,11 @@ class Trainer(object):
             # 使用混合精度训练
             if self.use_amp:
                 with autocast():
-                    v_d, v_p, f, score, cost_matrix = self.model(v_d, v_p, drug_precomputed, protein_precomputed)
+                    v_d, v_p, f, score = self.model(v_d, v_p, drug_precomputed, protein_precomputed)
                     if self.n_class == 1:
                         n, loss = binary_cross_entropy(score, labels)
                     else:
                         n, loss = cross_entropy_logits(score, labels)
-
-                    # 添加OT损失监督
-                    if self.use_ot_loss and cost_matrix is not None:
-                        # OT损失：最小化代价矩阵（鼓励相似特征对齐）
-                        # 使用Frobenius范数作为正则化项
-                        ot_loss = torch.norm(cost_matrix, p='fro') / (cost_matrix.shape[0] ** 2)
-                        loss += self.ot_loss_weight * ot_loss
                 
                 # 使用GradScaler处理梯度
                 self.scaler.scale(loss).backward()
@@ -215,18 +202,11 @@ class Trainer(object):
                 self.scaler.update()
             else:
                 # 正常训练
-                v_d, v_p, f, score, cost_matrix = self.model(v_d, v_p, drug_precomputed, protein_precomputed)
+                v_d, v_p, f, score = self.model(v_d, v_p, drug_precomputed, protein_precomputed)
                 if self.n_class == 1:
                     n, loss = binary_cross_entropy(score, labels)
                 else:
                     n, loss = cross_entropy_logits(score, labels)
-
-                # 添加OT损失监督
-                if self.use_ot_loss and cost_matrix is not None:
-                    # OT损失：最小化代价矩阵（鼓励相似特征对齐）
-                    # 使用Frobenius范数作为正则化项
-                    ot_loss = torch.norm(cost_matrix, p='fro') / (cost_matrix.shape[0] ** 2)
-                    loss += self.ot_loss_weight * ot_loss
                 loss.backward()
                 
                 # 梯度裁剪（稳定化技术）
@@ -254,10 +234,11 @@ class Trainer(object):
         num_batches = len(data_loader)
         # 仅在需要可视化时保存轻量结果，避免将庞大图和蛋白编码写入CSV导致卡顿
         df = {'y_pred': [], 'y_label': []}
+        eval_model = self.model
         with torch.no_grad():
-            self.model.eval()
+            eval_model.eval()
             # 确保在验证/测试时BatchNorm使用全局统计量
-            for module in self.model.modules():
+            for module in eval_model.modules():
                 if isinstance(module, torch.nn.BatchNorm1d) or isinstance(module, torch.nn.BatchNorm2d):
                     module.track_running_stats = True  # 确保使用全局统计量
                     module.eval()  # 明确设置为评估模式
@@ -278,15 +259,9 @@ class Trainer(object):
                 # 统一使用混合精度进行测试，确保训练和测试精度一致
                 if self.use_amp:
                     with autocast():
-                        if dataloader == "val":
-                            v_d, v_p, f, score, _ = self.model(v_d, v_p, drug_precomputed, protein_precomputed)
-                        elif dataloader == "test":
-                            v_d, v_p, f, score, _ = self.best_model(v_d, v_p, drug_precomputed, protein_precomputed)
+                        v_d, v_p, f, score = eval_model(v_d, v_p, drug_precomputed, protein_precomputed)
                 else:
-                    if dataloader == "val":
-                        v_d, v_p, f, score, _ = self.model(v_d, v_p, drug_precomputed, protein_precomputed)
-                    elif dataloader == "test":
-                        v_d, v_p, f, score, _ = self.best_model(v_d, v_p, drug_precomputed, protein_precomputed)
+                    v_d, v_p, f, score = eval_model(v_d, v_p, drug_precomputed, protein_precomputed)
                 
                 if self.n_class == 1:
                     n = torch.sigmoid(torch.squeeze(score, 1))
@@ -306,6 +281,7 @@ class Trainer(object):
         test_loss = test_loss / num_batches
 
         if dataloader == "test":
+            y_pred_np = np.asarray(y_pred)
             fpr, tpr, thresholds = roc_curve(y_label, y_pred)
             prec, recall, _ = precision_recall_curve(y_label, y_pred)
             try:
@@ -330,7 +306,7 @@ class Trainer(object):
             # 选择Youden's J方法作为最终阈值
             thred_optim = thred_optim_j
             
-            y_pred_s = [1 if i else 0 for i in (y_pred >= thred_optim)]
+            y_pred_s = [1 if i else 0 for i in (y_pred_np >= thred_optim)]
 
             tn, fp, fn, tp = confusion_matrix(y_label, y_pred_s).ravel()
             
