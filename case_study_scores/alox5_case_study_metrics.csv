@@ -1,0 +1,7 @@
+requested_k,evaluated_k,candidate_count,known_interactions,baseline_known_rate,hits_at_k,hit_rate_at_k,recall_at_k,enrichment_factor_at_k,success_at_k
+1,1,4,1,0.25,1,1.0,1.0,4.0,1
+5,4,4,1,0.25,1,0.25,1.0,1.0,1
+10,4,4,1,0.25,1,0.25,1.0,1.0,1
+20,4,4,1,0.25,1,0.25,1.0,1.0,1
+50,4,4,1,0.25,1,0.25,1.0,1.0,1
+100,4,4,1,0.25,1,0.25,1.0,1.0,1
