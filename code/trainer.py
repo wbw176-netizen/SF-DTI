@@ -39,7 +39,6 @@ class Trainer(object):
         self.decay_interval = config["SOLVER"]["DECAY_INTERVAL"]
         self.use_ld = config['SOLVER']["USE_LD"]
 
-        # 稳定化训练参数
         self.gradient_clip_norm = config.get("SOLVER", {}).get("GRADIENT_CLIP_NORM", 1.0)
         self.use_precomputed = config.get("use_precomputed_features", False)
 
@@ -64,15 +63,14 @@ class Trainer(object):
         self.test_table = PrettyTable(test_metric_header)
         self.train_table = PrettyTable(train_metric_header)
 
-        # 添加早停机制
         self.early_stopping = EarlyStopping(
-            patience=config["SOLVER"].get("PATIENCE", 10),  # 从配置中获取patience，默认为10
-            min_delta=config["SOLVER"].get("MIN_DELTA", 0.0001),  # 最小改善阈值
-            mode='max',  # 监控AUROC，越大越好
+            patience=config["SOLVER"].get("PATIENCE", 10),  
+            min_delta=config["SOLVER"].get("MIN_DELTA", 0.0001),  
+            mode='max', 
             verbose=True
         )
         
-        # 添加模型保存路径
+
         self.model_save_path = os.path.join(self.output_dir, 'best_model.pth')
         
 
@@ -96,7 +94,6 @@ class Trainer(object):
             self.val_loss_epoch.append(val_loss)
             self.val_auroc_epoch.append(auroc)
             
-            # 使用早停机制
             self.early_stopping(self.current_epoch, auroc, self.model, self.model_save_path)
             
             if self.early_stopping.early_stop:
@@ -109,7 +106,7 @@ class Trainer(object):
 
             print('Validation at Epoch ' + str(self.current_epoch) + ' with validation loss ' + str(val_loss), " AUROC "
                   + str(auroc) + " AUPRC " + str(auprc))
-        # 加载最佳模型进行测试
+
         checkpoint = torch.load(self.model_save_path, map_location=self.device)
         self.model.load_state_dict(checkpoint['model_state_dict'])
         self.best_epoch = checkpoint['epoch']
@@ -169,19 +166,16 @@ class Trainer(object):
             self.step += 1
             v_d, v_p, labels = v_d.to(self.device), v_p.to(self.device), labels.float().to(self.device)
             
-            # 处理预训练特征
             if drug_precomputed is not None:
                 drug_precomputed = drug_precomputed.to(self.device)
             if protein_precomputed is not None:
-                # protein_precomputed 是元组 (esm2_features, prott5_features)
                 if isinstance(protein_precomputed, tuple):
                     protein_precomputed = tuple(p.to(self.device) for p in protein_precomputed)
                 else:
                     protein_precomputed = protein_precomputed.to(self.device)
             
             self.optim.zero_grad()
-            
-            # 使用混合精度训练
+
             if self.use_amp:
                 with autocast():
                     v_d, v_p, f, score = self.model(v_d, v_p, drug_precomputed, protein_precomputed)
@@ -190,10 +184,9 @@ class Trainer(object):
                     else:
                         n, loss = cross_entropy_logits(score, labels)
                 
-                # 使用GradScaler处理梯度
+
                 self.scaler.scale(loss).backward()
                 
-                # 梯度裁剪（稳定化技术）
                 if self.gradient_clip_norm > 0:
                     self.scaler.unscale_(self.optim)
                     torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.gradient_clip_norm)
@@ -201,7 +194,6 @@ class Trainer(object):
                 self.scaler.step(self.optim)
                 self.scaler.update()
             else:
-                # 正常训练
                 v_d, v_p, f, score = self.model(v_d, v_p, drug_precomputed, protein_precomputed)
                 if self.n_class == 1:
                     n, loss = binary_cross_entropy(score, labels)
@@ -209,7 +201,6 @@ class Trainer(object):
                     n, loss = cross_entropy_logits(score, labels)
                 loss.backward()
                 
-                # 梯度裁剪（稳定化技术）
                 if self.gradient_clip_norm > 0:
                     torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.gradient_clip_norm)
                 
@@ -232,31 +223,28 @@ class Trainer(object):
         else:
             raise ValueError(f"Error key value {dataloader}")
         num_batches = len(data_loader)
-        # 仅在需要可视化时保存轻量结果，避免将庞大图和蛋白编码写入CSV导致卡顿
+
         df = {'y_pred': [], 'y_label': []}
         eval_model = self.model
         with torch.no_grad():
             eval_model.eval()
-            # 确保在验证/测试时BatchNorm使用全局统计量
             for module in eval_model.modules():
                 if isinstance(module, torch.nn.BatchNorm1d) or isinstance(module, torch.nn.BatchNorm2d):
-                    module.track_running_stats = True  # 确保使用全局统计量
-                    module.eval()  # 明确设置为评估模式
+                    module.track_running_stats = True 
+                    module.eval()  
             
             for i, (v_d, v_p, labels, drug_precomputed, protein_precomputed) in enumerate(data_loader):
                 v_d, v_p, labels = v_d.to(self.device), v_p.to(self.device), labels.float().to(self.device)
                 
-                # 处理预训练特征
+
                 if drug_precomputed is not None:
                     drug_precomputed = drug_precomputed.to(self.device)
                 if protein_precomputed is not None:
-                    # protein_precomputed 是元组 (esm2_features, prott5_features)
                     if isinstance(protein_precomputed, tuple):
                         protein_precomputed = tuple(p.to(self.device) for p in protein_precomputed)
                     else:
                         protein_precomputed = protein_precomputed.to(self.device)
                 
-                # 统一使用混合精度进行测试，确保训练和测试精度一致
                 if self.use_amp:
                     with autocast():
                         v_d, v_p, f, score = eval_model(v_d, v_p, drug_precomputed, protein_precomputed)
@@ -274,8 +262,6 @@ class Trainer(object):
                 y_label = y_label + labels.to("cpu").tolist()
                 y_pred = y_pred + n.to("cpu").tolist()
 
-                # 不再导出DGLGraph与蛋白编码等大对象，防止在Windows上卡死
-
         auroc = roc_auc_score(y_label, y_pred)
         auprc = average_precision_score(y_label, y_pred)
         test_loss = test_loss / num_batches
@@ -290,30 +276,26 @@ class Trainer(object):
                 raise ('RuntimeError: the divide==0')
             f1 = 2 * precision * tpr / (tpr + precision + 0.00001)
             
-            # 优化阈值选择方法
-            # 方法1：基于F1分数选择最佳阈值（避免跳过前5个阈值）
+
             if len(f1) > 0:
                 best_f1_idx = np.argmax(f1)
                 thred_optim_f1 = thresholds[best_f1_idx]
             else:
                 thred_optim_f1 = 0.5
                 
-            # 方法2：基于Youden's J统计量 (TPR - FPR)
             j_scores = tpr - fpr
             best_j_idx = np.argmax(j_scores)
             thred_optim_j = thresholds[best_j_idx]
             
-            # 选择Youden's J方法作为最终阈值
             thred_optim = thred_optim_j
             
             y_pred_s = [1 if i else 0 for i in (y_pred_np >= thred_optim)]
 
             tn, fp, fn, tp = confusion_matrix(y_label, y_pred_s).ravel()
             
-            # 正确计算各项指标
             accuracy = (tp + tn) / (tp + tn + fp + fn)
-            sensitivity = tp / (tp + fn) if (tp + fn) > 0 else 0  # 真正例率 (TPR)
-            specificity = tn / (tn + fp) if (tn + fp) > 0 else 0  # 真负例率 (TNR)
+            sensitivity = tp / (tp + fn) if (tp + fn) > 0 else 0 
+            specificity = tn / (tn + fp) if (tn + fp) > 0 else 0  
             
             # Calculate MCC
             mcc = matthews_corrcoef(y_label, y_pred_s)
