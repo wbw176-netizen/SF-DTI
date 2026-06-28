@@ -2,6 +2,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch
 from dgllife.model.gnn import GCN
+import math
 
 def binary_cross_entropy(pred_output, labels):
     loss_fct = torch.nn.BCEWithLogitsLoss()
@@ -327,6 +328,161 @@ class MolecularGCN(nn.Module):
             start_idx += num_nodes
         return output
 
+def get_freq_indices(method):
+    assert method in ['top1', 'top2', 'top4', 'top8', 'top16', 'top32', 'bot1', 'bot2', 'bot4', 'bot8', 'bot16', 'bot32', 'low1', 'low2', 'low4', 'low8', 'low16', 'low32']
+    num_freq = int(method[3:])
+    if 'top' in method:
+        all_top_indices_x = [0, 0, 6, 0, 0, 1, 1, 4, 5, 1, 3, 0, 0, 0, 3, 2, 4, 6, 3, 5, 5, 2, 6, 5, 5, 3, 3, 4, 2, 2, 6, 1]
+        all_top_indices_y = [0, 1, 0, 5, 2, 0, 2, 0, 0, 6, 0, 4, 6, 3, 5, 2, 6, 3, 3, 3, 5, 1, 1, 2, 4, 2, 1, 1, 3, 0, 5, 3]
+        mapper_x = all_top_indices_x[:num_freq]
+        mapper_y = all_top_indices_y[:num_freq]
+    elif 'low' in method:
+        all_low_indices_x = [0, 0, 1, 1, 0, 2, 2, 1, 2, 0, 3, 4, 0, 1, 3, 0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5, 6, 1, 2, 3, 4]
+        all_low_indices_y = [0, 1, 0, 1, 2, 0, 1, 2, 2, 3, 0, 0, 4, 3, 1, 5, 4, 3, 2, 1, 0, 6, 5, 4, 3, 2, 1, 0, 6, 5, 4, 3]
+        mapper_x = all_low_indices_x[:num_freq]
+        mapper_y = all_low_indices_y[:num_freq]
+    elif 'bot' in method:
+        all_bot_indices_x = [6, 1, 3, 3, 2, 4, 1, 2, 4, 4, 5, 1, 4, 6, 2, 5, 6, 1, 6, 2, 2, 4, 3, 3, 5, 5, 6, 2, 5, 5, 3, 6]
+        all_bot_indices_y = [6, 4, 4, 6, 6, 3, 1, 4, 4, 5, 6, 5, 2, 2, 5, 1, 4, 3, 5, 0, 3, 1, 1, 2, 4, 2, 1, 1, 5, 3, 3, 3]
+        mapper_x = all_bot_indices_x[:num_freq]
+        mapper_y = all_bot_indices_y[:num_freq]
+    else:
+        raise NotImplementedError
+    return (mapper_x, mapper_y)
+
+class NonlinearFrequencyTransform(nn.Module):
+
+    def __init__(self, in_channels, transform_type='swish', num_bases=4):
+        super(NonlinearFrequencyTransform, self).__init__()
+        self.transform_type = transform_type
+        self.alpha = nn.Parameter(torch.ones(1) * 0.5)
+        self.frequency_bases = nn.Parameter(torch.randn(num_bases, in_channels) * 0.1)
+        self.basis_weights = nn.Parameter(torch.ones(num_bases))
+        self.nonlinear_activations = nn.ModuleDict({'swish': nn.SiLU(), 'gelu': nn.GELU(), 'relu': nn.ReLU(inplace=True)})
+        self.channel_reconstructors = {}
+
+    def polynomial_transform(self, x, degree=2):
+        return x + self.alpha ** 2 * x ** 2
+
+    def adaptive_basis_transform(self, x):
+        bases = self.frequency_bases
+        weights = F.softmax(self.basis_weights, dim=0)
+        x_reshaped = x.view(x.size(0), x.size(1), -1)
+        similarities = torch.einsum('nc,bch->nbh', bases, x_reshaped)
+        weighted_response = torch.einsum('n,nbh->bh', weights, similarities)
+        weighted_response_reshaped = weighted_response.view(x.size(0), 1, x.size(2), x.size(3))
+        channels = x.size(1)
+        if channels not in self.channel_reconstructors:
+            self.channel_reconstructors[channels] = nn.Conv2d(1, channels, 1, bias=False).to(x.device)
+        return self.channel_reconstructors[channels](weighted_response_reshaped)
+
+    def forward(self, x, transform_method=None):
+        if transform_method is None:
+            transform_method = self.transform_type
+        if transform_method == 'polynomial':
+            return self.polynomial_transform(x)
+        elif transform_method == 'adaptive':
+            return self.adaptive_basis_transform(x)
+        elif transform_method == 'swish':
+            return self.nonlinear_activations['swish'](x)
+        elif transform_method == 'gelu':
+            return self.nonlinear_activations['gelu'](x)
+        elif transform_method == 'relu':
+            return self.nonlinear_activations['relu'](x)
+        else:
+            return self.nonlinear_activations['swish'](x)
+
+class EnhancedMultiFrequencyChannelAttention(nn.Module):
+
+    def __init__(self, in_channels, dct_h=7, dct_w=7, frequency_branches=8, frequency_selection='top', reduction=16, use_nonlinear=True):
+        super(EnhancedMultiFrequencyChannelAttention, self).__init__()
+        assert frequency_branches in [1, 2, 4, 8, 16, 32]
+        frequency_selection = frequency_selection + str(frequency_branches)
+        self.num_freq = frequency_branches
+        self.dct_h = dct_h
+        self.dct_w = dct_w
+        self.use_nonlinear = use_nonlinear
+        mapper_x, mapper_y = get_freq_indices(frequency_selection)
+        mapper_x = [temp_x * (dct_h // 7) for temp_x in mapper_x]
+        mapper_y = [temp_y * (dct_w // 7) for temp_y in mapper_y]
+        if use_nonlinear:
+            self.nonlinear_transform = NonlinearFrequencyTransform(in_channels, transform_type='swish', num_bases=4)
+            self.transform_selector = nn.Sequential(nn.AdaptiveAvgPool2d(1), nn.Conv2d(in_channels, 3, 1), nn.Softmax(dim=1))
+        self.register_buffer('dct_weights', self._precompute_dct_weights(mapper_x, mapper_y, in_channels))
+        self.fc = nn.Sequential(nn.Conv2d(in_channels, in_channels // reduction, 1, bias=False), nn.ReLU(inplace=True), nn.Conv2d(in_channels // reduction, in_channels, 1, bias=False))
+        self.avg_pool = nn.AdaptiveAvgPool2d(1)
+        self.max_pool = nn.AdaptiveMaxPool2d(1)
+        self.fusion_conv = nn.Conv2d(in_channels * 2, in_channels, 1, bias=False)
+        self.freq_response_learner = nn.Sequential(nn.Conv2d(in_channels, in_channels // 8, 1), nn.ReLU(inplace=True), nn.Conv2d(in_channels // 8, in_channels, 1), nn.Sigmoid())
+
+    def _precompute_dct_weights(self, mapper_x, mapper_y, in_channels):
+        dct_weights = []
+        for freq_idx in range(self.num_freq):
+            dct_weight = torch.zeros(in_channels, in_channels, self.dct_h, self.dct_w)
+            for t_x in range(self.dct_h):
+                for t_y in range(self.dct_w):
+                    for ch in range(in_channels):
+                        dct_weight[ch, ch, t_x, t_y] = self._build_filter(t_x, mapper_x[freq_idx], self.dct_h) * self._build_filter(t_y, mapper_y[freq_idx], self.dct_w)
+            dct_weights.append(dct_weight)
+        return torch.stack(dct_weights, dim=0)
+
+    def _build_filter(self, pos, freq, size):
+        result = math.cos(math.pi * freq * (2 * pos + 1) / (2 * size)) / math.sqrt(size)
+        if freq == 0:
+            result = result * math.sqrt(2)
+        return result
+
+    def forward(self, x):
+        b, c, h, w = x.size()
+        freq_features = []
+        for freq_idx in range(self.num_freq):
+            dct_weight = self.dct_weights[freq_idx]
+            freq_feat = F.conv2d(x, dct_weight, padding=(self.dct_h // 2, self.dct_w // 2), stride=1)
+            if self.use_nonlinear:
+                transform_weights = self.transform_selector(freq_feat)
+                transform_methods = ['swish', 'gelu', 'adaptive']
+                nonlinear_features = []
+                for i, method in enumerate(transform_methods):
+                    transformed = self.nonlinear_transform(freq_feat, method)
+                    weighted = transformed * transform_weights[:, i:i + 1, :, :]
+                    nonlinear_features.append(weighted)
+                freq_feat = sum(nonlinear_features)
+            freq_features.append(freq_feat)
+        freq_fused = torch.stack(freq_features, dim=1).mean(dim=1)
+        freq_response = self.freq_response_learner(freq_fused)
+        freq_fused = freq_fused * freq_response
+        avg_out = self.fc(self.avg_pool(freq_fused))
+        max_out = self.fc(self.max_pool(freq_fused))
+        attention = torch.sigmoid(avg_out + max_out)
+        out = x * attention
+        enhanced = torch.cat([out, freq_fused], dim=1)
+        out = self.fusion_conv(enhanced)
+        return out
+
+class PMSAFI(nn.Module):
+
+    def __init__(self, embedding_dim, num_filters, padding=True):
+        super(PMSAFI, self).__init__()
+        if padding:
+            self.embedding = nn.Embedding(26, embedding_dim, padding_idx=0)
+        else:
+            self.embedding = nn.Embedding(26, embedding_dim)
+        in_ch = [embedding_dim] + num_filters
+        self.mfca = EnhancedMultiFrequencyChannelAttention(in_channels=in_ch[0], frequency_branches=8, frequency_selection='top', reduction=16, use_nonlinear=True)
+        self.feature_align = nn.Sequential(nn.Conv2d(in_ch[0], in_ch[1], 1), nn.BatchNorm2d(in_ch[1]), nn.ReLU())
+        self.sequence_modeling = nn.Sequential(nn.Conv1d(in_ch[0], in_ch[1], kernel_size=3, padding=1), nn.BatchNorm1d(in_ch[1]), nn.ReLU(), nn.Conv1d(in_ch[1], in_ch[1], kernel_size=5, padding=2), nn.BatchNorm1d(in_ch[1]), nn.ReLU())
+
+    def forward(self, v):
+        v = self.embedding(v.long())
+        v = v.transpose(2, 1)
+        v = v.unsqueeze(-1)
+        v = self.mfca(v)
+        v = v.squeeze(-1)
+        v = self.sequence_modeling(v)
+        v = v.unsqueeze(-1)
+        v = self.feature_align(v)
+        return v
+
 class MPRC(nn.Module):
 
     def __init__(self, in_dim, hidden_dim, out_dim, binary=1, dropout_rate=None):
@@ -376,18 +532,21 @@ class SF_DTI(nn.Module):
         drug_in_feats = config['DRUG']['NODE_IN_FEATS']
         drug_embedding = config['DRUG']['NODE_IN_EMBEDDING']
         drug_hidden_feats = config['DRUG']['HIDDEN_LAYERS']
+        protein_emb_dim = config['PROTEIN']['EMBEDDING_DIM']
         num_filters = config['PROTEIN']['NUM_FILTERS']
         mlp_in_dim = config['DECODER']['IN_DIM']
         mlp_hidden_dim = config['DECODER']['HIDDEN_DIM']
         mlp_out_dim = config['DECODER']['OUT_DIM']
         mlp_dropout_rate = config['DECODER']['DROPOUT_RATE']
         drug_padding = config['DRUG']['PADDING']
+        protein_padding = config['PROTEIN']['PADDING']
         out_binary = config['DECODER']['BINARY']
         cmspf_emb_dim = signal_cfg['EMBEDDING_DIM']
         cmspf_num_cascades = signal_cfg['NUM_CASCADES']
         cmspf_dropout_rate = cfg_value(signal_cfg, 'SIGNAL_DROPOUT_RATE', cfg_value(signal_cfg, 'CBIE_DROPOUT_RATE', 0.1))
         self.feature_dim = cmspf_emb_dim
         self.drug_extractor = MolecularGCN(in_feats=drug_in_feats, dim_embedding=drug_embedding, padding=drug_padding, hidden_feats=drug_hidden_feats)
+        self.protein_extractor = PMSAFI(protein_emb_dim, num_filters, protein_padding)
         self.cross_module = CMSPF(nf=cmspf_emb_dim, dropout=cmspf_dropout_rate, num_cascades=cmspf_num_cascades)
         self.drug_fusion = SCMAF(model_feat_dim=drug_hidden_feats[-1], precomputed_feat_dim=cfg_value(pretrained_cfg, 'CHEMBERTA_DIM', 384), fusion_dim=drug_hidden_feats[-1], dropout=cfg_value(drug_fusion_cfg, 'DROPOUT_RATE', 0.1))
         self.protein_fusion = MPMI(prott5_dim=cfg_value(pretrained_cfg, 'PROTT5_DIM', 1024), esm2_dim=cfg_value(pretrained_cfg, 'ESM2_DIM', 1280), fusion_dim=num_filters[-1], dropout=cfg_value(protein_fusion_cfg, 'DROPOUT_RATE', 0.1), num_heads=cfg_value(protein_fusion_cfg, 'NUM_HEAD', 4))
@@ -414,22 +573,22 @@ class SF_DTI(nn.Module):
 
     def forward(self, bg_d, v_p, drug_precomputed=None, protein_precomputed=None, mode='train'):
         v_d = self.drug_extractor(bg_d)
-        protein_seq_len = v_p.shape[1]
-        if not self.use_precomputed_features:
-            raise ValueError('SF_DTI requires precomputed ChemBERTa, ESM-2, and ProtT5 features')
-        if drug_precomputed is None or protein_precomputed is None:
-            raise ValueError('Precomputed drug and protein features are required')
-        if not isinstance(protein_precomputed, tuple) or len(protein_precomputed) != 2:
-            raise ValueError('protein_precomputed must be a tuple: (esm2_features, prott5_features)')
-        drug_precomputed = drug_precomputed.to(self.device)
-        protein_esm2, protein_prott5 = protein_precomputed
-        protein_esm2 = protein_esm2.to(self.device)
-        protein_prott5 = protein_prott5.to(self.device)
-        v_d_pooled = self._pool_features(v_d)
-        v_p_fused = self.protein_fusion(protein_prott5, protein_esm2)
-        v_d_fused = self.drug_fusion(v_d_pooled, drug_precomputed)
-        v_d = v_d_fused.unsqueeze(1).expand(-1, v_d.shape[1], -1)
-        v_p = v_p_fused.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, protein_seq_len, 1)
+        v_p = self.protein_extractor(v_p)
+        if self.use_precomputed_features and drug_precomputed is not None and (protein_precomputed is not None):
+            if not isinstance(protein_precomputed, tuple) or len(protein_precomputed) != 2:
+                raise ValueError('protein_precomputed must be a tuple: (esm2_features, prott5_features)')
+            drug_precomputed = drug_precomputed.to(self.device)
+            protein_esm2, protein_prott5 = protein_precomputed
+            protein_esm2 = protein_esm2.to(self.device)
+            protein_prott5 = protein_prott5.to(self.device)
+            v_d_pooled = self._pool_features(v_d)
+            protein_precomputed_proj = self.protein_fusion(protein_prott5, protein_esm2)
+            if protein_precomputed_proj.dim() == 3:
+                protein_precomputed_proj = self._pool_features(protein_precomputed_proj)
+            v_d_fused = self.drug_fusion(v_d_pooled, drug_precomputed)
+            v_p_fused = protein_precomputed_proj
+            v_d = v_d_fused.unsqueeze(1).expand(-1, v_d.shape[1], -1)
+            v_p = v_p_fused.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, v_p.shape[2], 1)
         min_seq_len = min(v_d.shape[1], v_p.shape[2])
         v_d = v_d[:, :min_seq_len, :]
         v_p = v_p[:, :, :min_seq_len, :]
