@@ -17,7 +17,7 @@ device = torch.device(f'cuda:{cuda_id}' if torch.cuda.is_available() else 'cpu')
 parser = argparse.ArgumentParser(description="SF_DTI for DTI prediction")
 parser.add_argument('--data', type=str, metavar='TASK', help='dataset', default='BindingDB')
 parser.add_argument('--split', default='random', type=str, metavar='S', help="split task",
-                    choices=['random', 'random1', 'random2', 'KIBA', 'random3', 'random4', 'cold', 'cold1', 'unseen_drug','unseen_target'])
+                    choices=['random'])
 parser.add_argument('--amp', action='store_true', help='Activate AMP (Automatic Mixed Precision) training')
 parser.add_argument('--output_dir', type=str, metavar='DIR', help='output directory', default='random3')
 parser.add_argument('--use_precomputed', action='store_true',
