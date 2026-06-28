@@ -24,7 +24,6 @@ class DTIDataset(data.Dataset):
             self._load_precomputed_features()
     
     def _load_precomputed_features(self):
-        """加载预训练特征"""
         try:
             possible_smiles_files = [
                 'smiles_features.npy',
