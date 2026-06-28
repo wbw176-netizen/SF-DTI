@@ -10,14 +10,6 @@ result files used in the revised manuscript.
 
 ## Repository Access
 
-Anonymous review repository:
-
-```text
-https://anonymous.4open.science/r/SF-DTI-3DF1/
-```
-
-Public repository for the final version:
-
 ```text
 https://github.com/wbw176-netizen/SF-DTI
 ```
