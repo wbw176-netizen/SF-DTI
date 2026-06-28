@@ -50,7 +50,6 @@ def graph_collate_func(x):
     d, p, y, drug_precomputed, protein_precomputed = zip(*x)
     d = dgl.batch(d)
     
-    # 处理预训练特征
     drug_precomputed_batch = None
     protein_precomputed_batch = None
     
@@ -58,8 +57,6 @@ def graph_collate_func(x):
         drug_precomputed_batch = torch.stack(drug_precomputed)
     
     if protein_precomputed[0] is not None:
-        # protein_precomputed 是一个元组列表 [(esm2_1, prott5_1), (esm2_2, prott5_2), ...]
-        # 需要分别堆叠 ESM2 和 ProtT5 特征
         esm2_features = torch.stack([p[0] for p in protein_precomputed])
         prott5_features = torch.stack([p[1] for p in protein_precomputed])
         protein_precomputed_batch = (esm2_features, prott5_features)
@@ -100,16 +97,8 @@ import torch
 
 
 class EarlyStopping:
-    """早停机制实现类"""
 
     def __init__(self, patience=7, min_delta=0, mode='max', verbose=True):
-        """
-        参数:
-            patience (int): 在多少个epoch内验证指标没有提升就停止训练
-            min_delta (float): 最小变化阈值，只有超过这个值才认为是提升
-            mode (str): 'min' 或 'max'，表示监控的指标是越小越好还是越大越好
-            verbose (bool): 是否打印早停信息
-        """
         self.patience = patience
         self.min_delta = min_delta
         self.mode = mode
@@ -160,7 +149,6 @@ class EarlyStopping:
 
 
     def save_checkpoint(self, val_score, model, path):
-        """保存最佳模型"""
         if self.verbose:
             print(f'Validation score improved ({self.val_score:.6f} --> {val_score:.6f}). Saving model ...')
         torch.save({
