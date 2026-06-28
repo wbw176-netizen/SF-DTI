@@ -71,9 +71,9 @@ Prepare the deduplicated splits and aligned precomputed features:
 ```bash
 cd code
 python prepare_blinded_case_study_splits.py \
-  --full_csv /path/to/DrugBank/random2/full.csv \
+  --full_csv /path/to/DrugBank/full.csv \
   --raw_id_file /path/to/DrugBank/data.txt \
-  --merged_feature_dir /path/to/DrugBank/merged_features \
+  --merged_feature_dir /path/to/DrugBank/Pretrained-features \
   --dataset_root ../datasets \
   --feature_root ../output/case_blind_features
 ```
